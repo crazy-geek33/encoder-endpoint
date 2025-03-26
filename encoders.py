@@ -262,3 +262,56 @@ class BalanceAndMakePaymentScenario(Scenario):
             responses.append(f"Your payment of {min_due} is due on {day_portion}.")
         
         return responses
+
+
+from typing import Dict, List
+from scenarios.base import Scenario
+
+class AvailableCreditScenario(Scenario):
+    def get_response(self, data: Dict) -> str:
+        responses: List[str] = []
+        cardholder_type = data.get("cardHolderType", "").upper()
+        
+        if cardholder_type in {"Z", "Y", "X"}:
+            responses.extend(self._process_conditions(data))
+        else:
+            responses.append("Unable to determine response for the given cardholder type.")
+        return "\n".join(responses)
+
+    def _process_conditions(self, data: Dict) -> List[str]:
+        responses: List[str] = []
+        available_credit = data.get("availableCredit", 0)
+        
+        # Group 1: Available Credit > 0
+        if available_credit > 0:
+            responses.append(f"Your available credit is {available_credit}.")
+        
+        # Group 1: Available Credit <= 0
+        elif available_credit <= 0:
+            responses.append("You have no available credit.")
+        
+        # Group 2: Cash Available > 0 and Cash Access Enabled
+        cash_available = data.get("cashAvailable", 0)
+        cash_access_enabled = data.get("cashAccessEnabled", False)
+        if cash_available > 0 and cash_access_enabled:
+            responses.append(f"of which {cash_available} may be used for cash advances.")
+        
+        # Group 3: Current Balance >= 0
+        current_balance = data.get("currentBalance", 0)
+        if current_balance >= 0:
+            responses.append(f"Your balance is {current_balance}.")
+        # Group 3: Current Balance < 0
+        else:
+            responses.append(f"You have a credit balance of {current_balance}.")
+        
+        # Group 4: Account Status "Closed"
+        account_status = data.get("accountStatus", "")
+        if account_status == "Closed":
+            responses.append("Your account is closed.")
+        
+        # Group 5: Card Status "Inactive"
+        card_status = data.get("cardStatus", "")
+        if card_status == "InActive":
+            responses.append("Your card is not active.")
+        
+        return responses
