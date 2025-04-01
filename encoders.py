@@ -1,270 +1,200 @@
-from typing import Dict, List
-from scenarios.base import Scenario
-from utils.helpers import extract_day
+import pandas as pd
+import random
+from faker import Faker
+from datetime import datetime, timedelta
 
-class CurrentBalanceScenario(Scenario):
-    def get_response(self, data: Dict) -> str:
-        responses: List[str] = []
-        # Grouping 1: Current Balance
-        current_balance = data.get("currentBalance", 0.0)
-        if current_balance >= 0:
-            responses.append(f"Your balance is {current_balance}.")
-        else:
-            responses.append(f"You have a credit balance of {current_balance}.")
-        
-        # Grouping 2: Cash Balance if cashAccessEnabled = True
-        if data.get("cashAccessEnabled", False):
-            cash_balance = data.get("cashBalance", 0.0)
-            responses.append(f"of which {cash_balance} is your cash balance.")
-        
-        # Grouping 3: Available Credit OCL Advisory
-        available_credit = data.get("availableCredit", 0.0)
-        if available_credit < 0:
-            responses.append("which is over your credit limit.")
-        
-        # Grouping 4: Available Credit message
-        if available_credit > 0:
-            responses.append(f"Your available credit is {available_credit}.")
-        elif available_credit <= 0:
-            responses.append("You have no available credit.")
-        
-        # Grouping 5: Cash Available condition
-        if data.get("cashAccessEnabled", False):
-            cash_available = data.get("cashAvailable", 0.0)
-            if cash_available > 0:
-                responses.append("of which I may be used for cash advances.")
-        
-        # Grouping 6: Minimum Payment Due Amount
-        min_due = data.get("minDuePayment", 0.0)
-        payment_due = data.get("paymentDueDate", "")
-        day_portion = extract_day(payment_due)
-        if min_due > 0:
-            responses.append(f"Your payment of {min_due} is due on {day_portion}.")
-        else:
-            responses.append(f"No payment is due at this time. As a reminder, your payment due date is the {day_portion} of every month.")
-        
-        # Grouping 7: Account/Card status
-        if data.get("accountStatus", "Active") == "Closed":
-            responses.append("Your account is closed.")
-        if data.get("cardStatus", "Active") == "InActive":
-            responses.append("Your card is not active.")
-        
-        return "\n".join(responses)
-from typing import Dict, List
-from scenarios.base import Scenario
-from utils.helpers import extract_day
+fake = Faker()
 
-class StatementBalanceScenario(Scenario):
-    def get_response(self, data: Dict) -> str:
-        responses: List[str] = []
-        # Grouping 1: Last Statement Balance response
-        last_stmt_balance = data.get("lastStatementBalance", 0.0)
-        last_stmt_date = data.get("lastStatementDate", "")
-        if last_stmt_balance > 0:
-            responses.append(f"Your {last_stmt_date} statement had a balance of {last_stmt_balance}.")
-        elif last_stmt_balance < 0:
-            responses.append(f"Your {last_stmt_date} statement had a credit balance of {last_stmt_balance}.")
-        else:
-            responses.append("You did not receive a statement this month because your balance was zero dollars.")
-        
-        # Grouping 3: Minimum Payment Due Amount
-        min_due = data.get("minDuePayment", 0.0)
-        payment_due = data.get("paymentDueDate", "")
-        day_portion = extract_day(payment_due)
-        if min_due > 0:
-            responses.append(f"Your payment of {min_due} is due on {day_portion}.")
-        else:
-            responses.append(f"No payment is due at this time. As a reminder, your payment due date is the {day_portion} of every month.")
-        
-        # Grouping 4: Account/Card status
-        if data.get("accountStatus", "Active") == "Closed":
-            responses.append("Your account is closed.")
-        if data.get("cardStatus", "Active") == "InActive":
-            responses.append("Your card is not active.")
-        
-        return "\n".join(responses)
-from typing import Dict, List
-from scenarios.base import Scenario
-from utils.helpers import extract_day
+def generate_account_data(n=100):
+    account_data = []
+    for _ in range(n):
+        # Using a 10-digit account number for realism
+        account_number = random.randint(1000000000, 9999999999)
+        unique_id = fake.uuid4()
+        account_status = random.choice(["Closed", "Active"])
+        device_status = random.choice(["InActive", "Active"])
+        account_data.append({
+            "accountNumber": account_number,
+            "uniqueId": unique_id,
+            "accountStatus": account_status,
+            "deviceStatus": device_status
+        })
+    return pd.DataFrame(account_data)
 
-class BalanceDueScenario(Scenario):
-    def get_response(self, data: Dict) -> str:
-        responses: List[str] = []
-        # Grouping 1: Current Balance message
-        current_balance = data.get("currentBalance", 0.0)
-        if current_balance >= 0:
-            responses.append(f"Your balance is {current_balance}.")
+def generate_balance_data(n=100):
+    balance_data = []
+    for _ in range(n):
+        # Credit limit realistic range (e.g., for credit cards)
+        credit_limit = round(random.uniform(1000, 15000), 2)
+        
+        # With a small chance the current balance goes over the limit (simulate overspending)
+        if random.random() < 0.1:
+            current_balance = round(random.uniform(credit_limit, credit_limit * 1.2), 2)
         else:
-            responses.append(f"You have a credit balance of {current_balance}.")
+            current_balance = round(random.uniform(0, credit_limit), 2)
         
-        # Grouping 2: Available Credit check
-        available_credit = data.get("availableCredit", 0.0)
-        if available_credit < 0:
-            responses.append("which is over your credit limit.")
+        # Available credit is what remains (or zero if over limit)
+        available_credit = round(credit_limit - current_balance, 2) if current_balance <= credit_limit else 0.0
         
-        # Grouping 3: Minimum Payment Due Amount
-        min_due = data.get("minDuePayment", 0.0)
-        payment_due = data.get("paymentDueDate", "")
-        day_portion = extract_day(payment_due)
-        if min_due > 0:
-            responses.append(f"Your payment of {min_due} is due on {day_portion}.")
-        else:
-            responses.append(f"No payment is due at this time. As a reminder, your payment due date is the {day_portion} of every month.")
+        # Last statement date between 30 and 60 days ago
+        last_statement_date = fake.date_time_between(start_date="-60d", end_date="-30d")
+        # Payment due date typically about 20 days after the statement
+        payment_due_date = last_statement_date + timedelta(days=20)
         
-        # Grouping 4: Past Due Amount
-        past_due = data.get("pastDueAmount", 0.0)
-        if past_due > 0:
-            responses.append(f"which includes a {past_due} past due amount.")
+        # Minimum due payment: at least $25 or 3% of current balance (if balance > 0)
+        min_due_payment = round(max(25, current_balance * 0.03), 2) if current_balance > 0 else 0.0
         
-        # Grouping 5: Recurring/Pending Payments conditions
-        one_time = data.get("anyOneTimePymts", False)
-        recur = data.get("anyRecurPymts", False)
-        if one_time and recur:
-            responses.append("Your account is currently set up for recurring payments, and you have one or more pending payment that have not yet posted.")
-        elif (not one_time) and recur:
-            responses.append("Your account is currently set up for recurring payments.")
-        elif one_time and (not recur):
-            responses.append("You have one or more pending payments that have not yet posted.")
+        # Cycle-to-date spend: assume it's between 50% to 100% of the current balance
+        cycle_to_date_spend = round(random.uniform(0.5 * current_balance, current_balance), 2) if current_balance > 0 else 0.0
         
-        # Grouping 6: Account/Card status
-        if data.get("accountStatus", "Active") == "Closed":
-            responses.append("Your account is closed.")
-        if data.get("cardStatus", "Active") == "InActive":
-            responses.append("Your card is not active.")
+        # Remaining spend available in this cycle (cannot be negative)
+        cycle_to_date_spend_available = round(max(credit_limit - cycle_to_date_spend, 0.0), 2)
         
-        return "\n".join(responses)
-from typing import Dict, List
-from scenarios.base import Scenario
+        # Cash available for cash advances: typically a fraction (e.g., 30%) of the credit limit
+        cash_available = round(0.3 * credit_limit, 2)
+        
+        # Past due amount: a small amount, with a 20% chance of being non-zero
+        past_due_amount = round(random.uniform(0, 50), 2) if random.random() < 0.2 else 0.0
+        
+        # Last statement balance: current balance adjusted by +/- 10%
+        last_statement_balance = round(current_balance * (1 + random.uniform(-0.1, 0.1)), 2)
+        
+        caller_type = random.choice(["U", "P", "A", "E", "O"])
+        device_spend_limit_ind = random.choice([True, False])
+        
+        # Calculate any amount over the credit limit
+        over_the_credit_limit = round(current_balance - credit_limit, 2) if current_balance > credit_limit else 0.0
+        
+        # Authorized amounts: a small fraction (up to 10% of current balance)
+        account_outstanding_auth_amt = round(random.uniform(0, 0.1 * current_balance), 2) if current_balance > 0 else 0.0
+        card_outstanding_authorized_amt = round(random.uniform(0, 0.1 * current_balance), 2) if current_balance > 0 else 0.0
+        
+        cash_access_ind = random.choice([True, False])
+        
+        # Flex loan payment: simulate a scheduled payment, sometimes applicable
+        flex_loan_payment = round(random.uniform(25, 500), 2) if random.random() < 0.5 else 0.0
+        
+        memoposted_payment = random.choice([True, False])
+        
+        # Spend limit: we assume it to be the same as the credit limit
+        spend_limit = credit_limit
+        
+        # Cash line: usually a portion (e.g., 20%) of the credit limit
+        cash_line = round(0.2 * credit_limit, 2)
+        
+        balance_data.append({
+            "currentBalance": current_balance,
+            "availableCredit": available_credit,
+            "paymentDueDate": payment_due_date.isoformat(),
+            "minDuePayment": min_due_payment,
+            "cycletoDateSpend": cycle_to_date_spend,
+            "cashAvailable": cash_available,
+            "pastDueAmount": past_due_amount,
+            "creditLimit": credit_limit,
+            "lastStatementDate": last_statement_date.isoformat(),
+            "lastStatementBalance": last_statement_balance,
+            "callerType": caller_type,
+            "deviceSpendLimitlnd": device_spend_limit_ind,
+            "overTheCreditLimit": over_the_credit_limit,
+            "accountOutstandingAuthAmt": account_outstanding_auth_amt,
+            "cardOutstandingAuthorizedAmt": card_outstanding_authorized_amt,
+            "cashAccessInd": cash_access_ind,
+            "flexLoanPayment": flex_loan_payment,
+            "memopostedPayment": memoposted_payment,
+            "cycleToDateSpendAvaialable": cycle_to_date_spend_available,
+            "spendLimit": spend_limit,
+            "cashLine": cash_line
+        })
+    return pd.DataFrame(balance_data)
 
-class NegativeBalanceScenario(Scenario):
-    def get_response(self, data: Dict) -> str:
-        responses: List[str] = []
-        # Grouping 1: Current Balance message
-        current_balance = data.get("currentBalance", 0.0)
-        if current_balance >= 0:
-            responses.append(f"Your balance is {current_balance}.")
-        else:
-            responses.append(f"You have a credit balance of {current_balance}.")
-        
-        # Grouping 3: Account/Card status
-        if data.get("accountStatus", "Active") == "Closed":
-            responses.append("Your account is closed.")
-        if data.get("cardStatus", "Active") == "InActive":
-            responses.append("Your card is not active.")
-        
-        return "\n".join(responses)
-from typing import Dict, List
-from scenarios.base import Scenario
+if __name__ == "__main__":
+    n = 100  # Number of records to generate
+    accounts_df = generate_account_data(n)
+    balances_df = generate_balance_data(n)
+    accounts_df.to_csv("accounts.csv", index=False)
+    balances_df.to_csv("balances.csv", index=False)
+    print("CSV files generated: accounts.csv and balances.csv")
 
-class AvailableCreditScenario(Scenario):
-    def get_response(self, data: Dict) -> str:
-        responses: List[str] = []
-        # Current Balance message
-        current_balance = data.get("currentBalance", 0.0)
-        if current_balance >= 0:
-            responses.append(f"Your balance is {current_balance}.")
-        else:
-            responses.append(f"You have a credit balance of {current_balance}.")
-        
-        # Available Credit message
-        available_credit = data.get("availableCredit", 0.0)
-        if available_credit > 0:
-            responses.append(f"Your available credit is {available_credit}.")
-        else:
-            responses.append("You have no available credit.")
-        
-        # Cash Available condition for cash advances
-        if data.get("cashAccessEnabled", False):
-            cash_available = data.get("cashAvailable", 0.0)
-            if cash_available > 0:
-                responses.append("of which I may be used for cash advances.")
-        
-        # Account/Card status
-        if data.get("accountStatus", "Active") == "Closed":
-            responses.append("Your account is closed.")
-        if data.get("cardStatus", "Active") == "InActive":
-            responses.append("Your card is not active.")
-        
-        return "\n".join(responses)
-from typing import Dict, List
-from scenarios.base import Scenario
+import csv
+from neo4j import GraphDatabase
 
-class CreditLimitScenario(Scenario):
-    def get_response(self, data: Dict) -> str:
-        responses: List[str] = []
-        # Grouping 1: Credit Limit
-        credit_limit = data.get("creditLimit", 0.0)
-        responses.append(f"Your credit limit is {credit_limit}.")
-        
-        # Grouping 2: Available Credit message
-        available_credit = data.get("availableCredit", 0.0)
-        if available_credit > 0:
-            responses.append(f"Your available credit is {available_credit}.")
-        else:
-            responses.append("You have no available credit.")
-        
-        # Grouping 3: Cash Available for cash advances
-        if data.get("cashAccessEnabled", False):
-            cash_available = data.get("cashAvailable", 0.0)
-            if cash_available > 0:
-                responses.append("of which I may be used for cash advances.")
-        
-        # Grouping 4: Account/Card status
-        if data.get("accountStatus", "Active") == "Closed":
-            responses.append("Your account is closed.")
-        if data.get("cardStatus", "Active") == "InActive":
-            responses.append("Your card is not active.")
-        
-        return "\n".join(responses)
-from typing import Dict, List
-from scenarios.base import Scenario
-from utils.helpers import extract_day
+# Configure your Neo4j connection details
+uri = "bolt://localhost:7687"
+username = "neo4j"
+password = "password"  # update with your Neo4j password
 
-class BalanceAndMakeAPaymentScenario(Scenario):
-    def get_response(self, data: Dict) -> str:
-        responses: List[str] = []
-        # Grouping 1: Current Balance
-        current_balance = data.get("currentBalance", 0.0)
-        if current_balance >= 0:
-            responses.append(f"Your balance is {current_balance}.")
-        else:
-            responses.append(f"You have a credit balance of {current_balance}.")
-        
-        # Grouping 2: Cash Balance (if cashAccessEnabled true)
-        if data.get("cashAccessEnabled", False):
-            cash_balance = data.get("cashBalance", 0.0)
-            responses.append(f"of which {cash_balance} is your cash balance.")
-        
-        # Grouping 3: OCL Advisory for Available Credit < 0
-        available_credit = data.get("availableCredit", 0.0)
-        if available_credit < 0:
-            responses.append("which is over your credit limit.")
-        
-        # Grouping 4: Available Credit message
-        if available_credit > 0:
-            responses.append(f"Your available credit is {available_credit}.")
-        elif available_credit <= 0:
-            responses.append("You have no available credit.")
-        
-        # Grouping 5: Cash Available for cash advances
-        if data.get("cashAccessEnabled", False):
-            cash_available = data.get("cashAvailable", 0.0)
-            if cash_available > 0:
-                responses.append("of which I may be used for cash advances.")
-        
-        # Grouping 6: Minimum Payment Due Amount
-        min_due = data.get("minDuePayment", 0.0)
-        payment_due = data.get("paymentDueDate", "")
-        day_portion = extract_day(payment_due)
-        if min_due > 0:
-            responses.append(f"Your payment of {min_due} is due on {day_portion}.")
-        else:
-            responses.append(f"No payment is due at this time. As a reminder, your payment due date is the {day_portion} of every month.")
-        
-        # Grouping 7: Account/Card status
-        if data.get("accountStatus", "Active") == "Closed":
-            responses.append("Your account is closed.")
-        if data.get("cardStatus", "Active") == "InActive":
-            responses.append("Your card is not active.")
-        
-        return "\n".join(responses)
+driver = GraphDatabase.driver(uri, auth=(username, password))
+
+def create_account_and_balance(tx, account, balance):
+    query = """
+    MERGE (a:Account {accountNumber: $accountNumber})
+      SET a.uniqueId = $uniqueId, 
+          a.accountStatus = $accountStatus, 
+          a.deviceStatus = $deviceStatus
+    MERGE (b:Balance {
+          currentBalance: $currentBalance,
+          availableCredit: $availableCredit,
+          paymentDueDate: datetime($paymentDueDate),
+          minDuePayment: $minDuePayment,
+          cycletoDateSpend: $cycletoDateSpend,
+          cashAvailable: $cashAvailable,
+          pastDueAmount: $pastDueAmount,
+          creditLimit: $creditLimit,
+          lastStatementDate: datetime($lastStatementDate),
+          lastStatementBalance: $lastStatementBalance,
+          callerType: $callerType,
+          deviceSpendLimitlnd: $deviceSpendLimitlnd,
+          overTheCreditLimit: $overTheCreditLimit,
+          accountOutstandingAuthAmt: $accountOutstandingAuthAmt,
+          cardOutstandingAuthorizedAmt: $cardOutstandingAuthorizedAmt,
+          cashAccessInd: $cashAccessInd,
+          flexLoanPayment: $flexLoanPayment,
+          memopostedPayment: $memopostedPayment,
+          cycleToDateSpendAvaialable: $cycleToDateSpendAvaialable,
+          spendLimit: $spendLimit,
+          cashLine: $cashLine
+    })
+    MERGE (a)-[:HAS_BALANCE]->(b)
+    """
+    tx.run(query, **account, **balance)
+
+def ingest_data():
+    with driver.session() as session:
+        with open("accounts.csv", newline='') as account_file, open("balances.csv", newline='') as balance_file:
+            account_reader = csv.DictReader(account_file)
+            balance_reader = csv.DictReader(balance_file)
+            for account, balance in zip(account_reader, balance_reader):
+                # Convert Account types
+                account["accountNumber"] = int(account["accountNumber"])
+                
+                # Convert Balance fields to appropriate types
+                balance["currentBalance"] = float(balance["currentBalance"])
+                balance["availableCredit"] = float(balance["availableCredit"])
+                balance["minDuePayment"] = float(balance["minDuePayment"])
+                balance["cycletoDateSpend"] = float(balance["cycletoDateSpend"])
+                balance["cashAvailable"] = float(balance["cashAvailable"])
+                balance["pastDueAmount"] = float(balance["pastDueAmount"])
+                balance["creditLimit"] = float(balance["creditLimit"])
+                balance["lastStatementBalance"] = float(balance["lastStatementBalance"])
+                balance["overTheCreditLimit"] = float(balance["overTheCreditLimit"])
+                balance["accountOutstandingAuthAmt"] = float(balance["accountOutstandingAuthAmt"])
+                balance["cardOutstandingAuthorizedAmt"] = float(balance["cardOutstandingAuthorizedAmt"])
+                balance["flexLoanPayment"] = float(balance["flexLoanPayment"])
+                balance["cycleToDateSpendAvaialable"] = float(balance["cycleToDateSpendAvaialable"])
+                balance["spendLimit"] = float(balance["spendLimit"])
+                balance["cashLine"] = float(balance["cashLine"])
+                
+                # Convert boolean fields
+                balance["deviceSpendLimitlnd"] = balance["deviceSpendLimitlnd"].strip().lower() == 'true'
+                balance["cashAccessInd"] = balance["cashAccessInd"].strip().lower() == 'true'
+                balance["memopostedPayment"] = balance["memopostedPayment"].strip().lower() == 'true'
+                
+                # Date fields (paymentDueDate and lastStatementDate) are already in ISO format.
+                
+                session.write_transaction(create_account_and_balance, account, balance)
+                print(f"Inserted Account {account['accountNumber']} with its Balance.")
+
+if __name__ == "__main__":
+    ingest_data()
+    print("Data ingestion completed.")
+
