@@ -1,64 +1,53 @@
-import math
+from pydantic import BaseModel, field_validator, ConfigDict
+from pydantic.class_validators import field_serializer
 from typing import Optional
-from pydantic import BaseModel
-from pydantic_core.core_schema import (
-    SerializationInfo,
-    SerializeAsAny,
-    plain_serializer,
-    no_info_plain_validator_function,
-    CoreSchema,
-)
+import math
+
 
 class CustomFloat(float):
+    @field_validator
     @classmethod
-    def __get_pydantic_core_schema__(cls, _source_type, _handler):
-        # Use the custom schema with validation and our own serialization
-        return SerializeAsAny(cls._get_schema())
-
-    @classmethod
-    def _get_schema(cls) -> CoreSchema:
-        # Build schema based on the no-info plain validator and add our custom serializer.
-        base_schema = no_info_plain_validator_function(cls._validate).__schema__
-        return base_schema.copy(
-            serialization=plain_serializer(cls._serialize, return_type=float)
-        )
-
-    @classmethod
-    def _validate(cls, value):
+    def validate_float(cls, value: float) -> float:
+        # Ensure the value is a valid float and handle any type issues
         try:
-            # Convert the input to float and then to CustomFloat
-            return cls(float(value))
-        except (ValueError, TypeError) as exc:
-            raise ValueError(f"Value {value!r} is not a valid float") from exc
+            return float(value)
+        except (ValueError, TypeError):
+            raise ValueError(f'Value {value!r} is not a valid float')
 
+    @field_serializer
     @classmethod
-    def _serialize(cls, value: float, _info: SerializationInfo) -> float:
-        # If the value is not finite (NaN, inf), return it as-is.
+    def serialize_float(cls, value: float) -> float:
+        # Truncate to exactly 2 decimal places
         if not math.isfinite(value):
-            return value
-        # Multiply by 100, truncate, then divide by 100 to achieve truncation to 2 decimals.
-        multiplier = 100.0
-        return math.trunc(value * multiplier) / multiplier
+            return value  # Keep NaN or infinities unchanged
+        return math.trunc(value * 100) / 100.0
 
     def __repr__(self):
-        # Always display two decimal places.
+        # Always display two decimal places
         return f"{float(self):.2f}"
 
     def __str__(self):
-        # Same for the string conversion.
+        # Same for string representation
         return f"{float(self):.2f}"
 
 
-# Example usage in a Pydantic model:
+# Pydantic model using CustomFloat
 class MyModel(BaseModel):
     value: Optional[CustomFloat] = None
 
-# Example tests:
+    model_config = ConfigDict(
+        json_encoders={
+            CustomFloat: lambda v: f"{v:.2f}"  # Enforce 2 decimal places in JSON
+        }
+    )
+
+
+# Example usage
 if __name__ == '__main__':
-    # Test truncation and display
-    m = MyModel(value=2.345)
-    print(m.value)  # Output: 2.34
-    m = MyModel(value=-2.345)
-    print(m.value)  # Output: -2.34
-    m = MyModel(value=1.0)
-    print(m.value)  # Output: 1.00
+    m1 = MyModel(value=2.345)
+    print(m1.value)  # Output: 2.34
+    m2 = MyModel(value=-2.345)
+    print(m2.value)  # Output: -2.34
+    m3 = MyModel(value=1.0)
+    print(m3.value)  # Output: 1.00
+    print(m3.json())  # {"value": "1.00"} - JSON will have 2 decimal places
